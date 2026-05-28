@@ -1,0 +1,117 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { db } from "@/lib/firebase"
+import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore"
+import { ImageRequest } from "@/types"
+
+export default function TeacherPage() {
+  const [code, setCode] = useState("")
+  const [inputCode, setInputCode] = useState("")
+  const [requests, setRequests] = useState<ImageRequest[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!code) return
+
+    const q = query(
+      collection(db, "requests"),
+      where("code", "==", code),
+      where("approved", "==", false),
+      orderBy("createdAt", "asc")
+    )
+
+    const unsub = onSnapshot(q, (snap) => {
+      setRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ImageRequest)))
+    })
+    return () => unsub()
+  }, [code])
+
+  const handleApprove = async (id: string) => {
+    await fetch("/api/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    })
+  }
+
+  const handleRegenerate = async (id: string, description: string) => {
+    setLoading(true)
+    await fetch("/api/regenerate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, description }),
+    })
+    setLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen bg-sky-50">
+      <header className="bg-white border-b border-sky-100 px-8 py-4 flex items-center gap-6">
+        <div>
+          <h1 className="text-xl font-bold text-sky-700">🧑‍🏫 AI 그림 승인 페이지</h1>
+          <p className="text-xs text-gray-400">학생이 요청한 그림을 확인하고 승인해 주세요</p>
+        </div>
+        <div className="flex gap-2 ml-auto items-center">
+          <input
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+            placeholder="🔐 코드 입력 (예: 바나나)"
+            value={inputCode}
+            onChange={(e) => setInputCode(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && setCode(inputCode.trim())}
+          />
+          <button
+            onClick={() => setCode(inputCode.trim())}
+            className="bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            조회
+          </button>
+        </div>
+      </header>
+
+      <main className="p-8">
+        {!code ? (
+          <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+            <p className="text-lg">위에서 코드를 입력하면 미승인 그림 목록이 나타납니다.</p>
+          </div>
+        ) : requests.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+            <p className="text-lg">✅ 현재 승인 대기 중인 그림이 없습니다.</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-gray-500 mb-4">
+              <span className="font-semibold text-sky-600">'{code}'</span> 코드 — 승인 대기 {requests.length}개
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {requests.map((req) => (
+                <div key={req.id} className="bg-white rounded-2xl border border-sky-100 shadow-sm overflow-hidden flex flex-col">
+                  <img src={req.imageUrl} alt="생성된 그림" className="w-full aspect-square object-cover" />
+                  <div className="p-4 flex flex-col gap-2 flex-1">
+                    <p className="font-semibold text-gray-700 text-sm">🙋 {req.studentName}</p>
+                    <p className="text-xs text-gray-500 leading-relaxed line-clamp-3">{req.description}</p>
+                    <div className="flex gap-2 mt-auto pt-2">
+                      <button
+                        onClick={() => handleApprove(req.id)}
+                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold py-2 rounded-lg transition-colors"
+                      >
+                        ✅ 승인
+                      </button>
+                      <button
+                        onClick={() => handleRegenerate(req.id, req.description)}
+                        disabled={loading}
+                        className="flex-1 bg-amber-400 hover:bg-amber-500 disabled:bg-gray-200 text-white text-sm font-semibold py-2 rounded-lg transition-colors"
+                      >
+                        🔁 재생성
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </main>
+    </div>
+  )
+}
