@@ -6,6 +6,6 @@ export interface ImageRequest {
   imagePrompt: string
   imageUrl: string
   originalImageUrl?: string
-  approved: boolean
+  status: "pending" | "approved" | "rejected"
   createdAt: number
 }

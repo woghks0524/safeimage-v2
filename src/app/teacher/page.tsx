@@ -9,7 +9,6 @@ export default function TeacherPage() {
   const [code, setCode] = useState("")
   const [inputCode, setInputCode] = useState("")
   const [requests, setRequests] = useState<ImageRequest[]>([])
-  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (!code) return
@@ -17,7 +16,7 @@ export default function TeacherPage() {
     const q = query(
       collection(db, "requests"),
       where("code", "==", code),
-      where("approved", "==", false),
+      where("status", "==", "pending"),
       orderBy("createdAt", "asc")
     )
 
@@ -35,14 +34,12 @@ export default function TeacherPage() {
     })
   }
 
-  const handleRegenerate = async (id: string, description: string) => {
-    setLoading(true)
-    await fetch("/api/regenerate", {
+  const handleReject = async (id: string) => {
+    await fetch("/api/reject", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, description }),
+      body: JSON.stringify({ id }),
     })
-    setLoading(false)
   }
 
   return (
@@ -113,11 +110,10 @@ export default function TeacherPage() {
                         ✅ 승인
                       </button>
                       <button
-                        onClick={() => handleRegenerate(req.id, req.description)}
-                        disabled={loading}
-                        className="flex-1 bg-amber-400 hover:bg-amber-500 disabled:bg-gray-200 text-white text-sm font-semibold py-2 rounded-lg transition-colors"
+                        onClick={() => handleReject(req.id)}
+                        className="flex-1 bg-rose-400 hover:bg-rose-500 text-white text-sm font-semibold py-2 rounded-lg transition-colors"
                       >
-                        🔁 재생성
+                        ❌ 거부
                       </button>
                     </div>
                   </div>

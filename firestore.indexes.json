@@ -5,7 +5,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "code", "order": "ASCENDING" },
-        { "fieldPath": "approved", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "ASCENDING" }
       ]
     }

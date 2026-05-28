@@ -132,7 +132,7 @@ ${STYLE_AND_SAFETY}
       imagePrompt,
       imageUrl,
       originalImageUrl,
-      approved: false,
+      status: "pending",
       createdAt: Date.now(),
     })
 

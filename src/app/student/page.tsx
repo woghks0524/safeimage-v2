@@ -56,8 +56,15 @@ export default function StudentPage() {
     const unsub = onSnapshot(q, (snap) => {
       if (snap.empty) return
       const data = snap.docs[0].data() as ImageRequest
-      if (data.approved) {
+      if (data.status === "approved") {
         setMessages((prev) => [...prev, { role: "assistant", content: data.imageUrl, type: "image" }])
+        setStatus("idle")
+        setPendingId(null)
+      } else if (data.status === "rejected") {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "이 그림은 선생님이 통과시키지 않았어요. 설명을 바꿔서 다시 그려볼까요?", type: "text" },
+        ])
         setStatus("idle")
         setPendingId(null)
       }
