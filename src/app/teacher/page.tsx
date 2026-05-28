@@ -81,15 +81,30 @@ export default function TeacherPage() {
         ) : (
           <>
             <p className="text-sm text-gray-500 mb-4">
-              <span className="font-semibold text-sky-600">'{code}'</span> 코드 — 승인 대기 {requests.length}개
+              <span className="font-semibold text-sky-600">&apos;{code}&apos;</span> 코드 — 승인 대기 {requests.length}개
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {requests.map((req) => (
                 <div key={req.id} className="bg-white rounded-2xl border border-sky-100 shadow-sm overflow-hidden flex flex-col">
-                  <img src={req.imageUrl} alt="생성된 그림" className="w-full aspect-square object-cover" />
+                  <div className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={req.imageUrl} alt="생성된 그림" className="w-full aspect-square object-cover" />
+                    {req.originalImageUrl && (
+                      <span className="absolute top-2 left-2 bg-amber-500/90 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full">
+                        🖼️ 업로드 변형
+                      </span>
+                    )}
+                  </div>
                   <div className="p-4 flex flex-col gap-2 flex-1">
                     <p className="font-semibold text-gray-700 text-sm">🙋 {req.studentName}</p>
                     <p className="text-xs text-gray-500 leading-relaxed line-clamp-3">{req.description}</p>
+                    {req.originalImageUrl && (
+                      <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                        <span>원본</span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={req.originalImageUrl} alt="학생 원본" className="h-10 w-10 object-cover rounded border border-gray-200" />
+                      </div>
+                    )}
                     <div className="flex gap-2 mt-auto pt-2">
                       <button
                         onClick={() => handleApprove(req.id)}

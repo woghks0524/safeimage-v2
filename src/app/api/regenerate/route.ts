@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import OpenAI from "openai"
+import OpenAI, { toFile } from "openai"
 import { adminDb, adminStorage } from "@/lib/firebase-admin"
 import { v4 as uuidv4 } from "uuid"
 
@@ -33,6 +33,10 @@ export async function POST(req: NextRequest) {
 `
 
   try {
+    // 원래 요청이 '업로드 변형'이었다면 원본을 기준으로 다시 변형한다
+    const docSnap = await adminDb.collection("requests").doc(id).get()
+    const originalImageUrl = (docSnap.data()?.originalImageUrl as string | undefined) || ""
+
     const gptResponse = await client.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -40,23 +44,37 @@ export async function POST(req: NextRequest) {
         { role: "user", content: gptPrompt },
       ],
     })
-
     const imagePrompt = gptResponse.choices[0].message.content!.trim()
 
-    const imageResponse = await client.images.generate({
-      model: "gpt-image-1",
-      prompt: imagePrompt,
-      size: "1024x1024",
-      n: 1,
-    })
-
-    const imageBase64 = (imageResponse.data![0] as { b64_json: string }).b64_json
-    const imageBytes = Buffer.from(imageBase64, "base64")
+    let resultBytes: Buffer
+    if (originalImageUrl) {
+      const resp = await fetch(originalImageUrl)
+      const originalBytes = Buffer.from(await resp.arrayBuffer())
+      const inputFile = await toFile(originalBytes, "input.png", { type: "image/png" })
+      const editRes = await client.images.edit({
+        model: "gpt-image-1",
+        image: inputFile,
+        prompt: imagePrompt,
+        size: "1024x1024",
+      })
+      resultBytes = Buffer.from((editRes.data![0] as { b64_json: string }).b64_json, "base64")
+    } else {
+      const imageResponse = await client.images.generate({
+        model: "gpt-image-1",
+        prompt: imagePrompt,
+        size: "1024x1024",
+        n: 1,
+      })
+      resultBytes = Buffer.from(
+        (imageResponse.data![0] as { b64_json: string }).b64_json,
+        "base64"
+      )
+    }
 
     const filename = `images/${uuidv4()}.png`
     const bucket = adminStorage.bucket()
     const file = bucket.file(filename)
-    await file.save(imageBytes, { contentType: "image/png" })
+    await file.save(resultBytes, { contentType: "image/png" })
     await file.makePublic()
     const imageUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`
 

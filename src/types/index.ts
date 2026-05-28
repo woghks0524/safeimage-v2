@@ -5,6 +5,7 @@ export interface ImageRequest {
   description: string
   imagePrompt: string
   imageUrl: string
+  originalImageUrl?: string
   approved: boolean
   createdAt: number
 }

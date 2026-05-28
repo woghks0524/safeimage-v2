@@ -2,22 +2,48 @@
 
 import { useState, useEffect, useRef } from "react"
 import { db } from "@/lib/firebase"
-import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore"
+import { collection, query, where, onSnapshot } from "firebase/firestore"
 import { ImageRequest } from "@/types"
 
 type Message = { role: "user" | "assistant"; content: string; type?: "text" | "image" }
+
+// 업로드 이미지를 최대 1024px PNG 데이터 URL로 축소 (전송량·생성 크기 정렬)
+async function fileToDownscaledPng(file: File, max = 1024): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const im = new window.Image()
+    im.onload = () => resolve(im)
+    im.onerror = reject
+    im.src = dataUrl
+  })
+  const scale = Math.min(1, max / Math.max(img.width, img.height))
+  const w = Math.round(img.width * scale)
+  const h = Math.round(img.height * scale)
+  const canvas = document.createElement("canvas")
+  canvas.width = w
+  canvas.height = h
+  canvas.getContext("2d")!.drawImage(img, 0, 0, w, h)
+  return canvas.toDataURL("image/png")
+}
 
 export default function StudentPage() {
   const [code, setCode] = useState("")
   const [studentName, setStudentName] = useState("")
   const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "안녕하세요! 그리고 싶은 그림에 대해 자세히 설명해주세요. 설명을 수정하면서 그림을 바꿔 나갈 수 있어요.", type: "text" },
+    { role: "assistant", content: "안녕하세요! 그리고 싶은 그림을 설명하거나, 내가 그린 그림을 올려서 바꿔볼 수도 있어요!", type: "text" },
   ])
   const [input, setInput] = useState("")
+  const [attachedImage, setAttachedImage] = useState<string | null>(null) // data URL
   const [promptHistory, setPromptHistory] = useState<string[]>([])
   const [status, setStatus] = useState<"idle" | "generating" | "waiting">("idle")
   const [pendingId, setPendingId] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -39,11 +65,27 @@ export default function StudentPage() {
     return () => unsub()
   }, [pendingId, status])
 
-  const handleSubmit = async () => {
-    if (!input.trim() || !code || !studentName || status !== "idle") return
+  const pickImage = async (file: File | null | undefined) => {
+    if (!file) return
+    try {
+      setAttachedImage(await fileToDownscaledPng(file))
+    } catch {
+      /* 이미지 읽기 실패는 무시 */
+    }
+  }
 
-    const desc = input.trim()
+  const handleSubmit = async () => {
+    if ((!input.trim() && !attachedImage) || !code || !studentName || status !== "idle") return
+
+    const hasImage = !!attachedImage
+    const desc = input.trim() || (hasImage ? "이 그림을 어린이용 부드러운 그림책 스타일로 바꿔줘." : "")
+    const imageDataUrl = attachedImage
+
     setInput("")
+    setAttachedImage(null)
+    if (imageDataUrl) {
+      setMessages((prev) => [...prev, { role: "user", content: imageDataUrl, type: "image" }])
+    }
     setMessages((prev) => [...prev, { role: "user", content: desc, type: "text" }])
     setStatus("generating")
 
@@ -51,10 +93,21 @@ export default function StudentPage() {
     setPromptHistory(newHistory)
 
     try {
+      const body: Record<string, unknown> = {
+        code,
+        studentName,
+        description: desc,
+        promptHistory: newHistory,
+      }
+      if (imageDataUrl) {
+        body.imageBase64 = imageDataUrl.split(",")[1]
+        body.imageMimeType = "image/png"
+      }
+
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, studentName, description: desc, promptHistory: newHistory }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -62,13 +115,13 @@ export default function StudentPage() {
       setPendingId(data.id)
       setStatus("waiting")
       setMessages((prev) => [...prev, { role: "assistant", content: "선생님이 그림을 확인 중이에요. 잠시만 기다려 주세요!", type: "text" }])
-    } catch (e) {
+    } catch {
       setStatus("idle")
       setMessages((prev) => [...prev, { role: "assistant", content: "오류가 발생했어요. 다시 시도해 주세요.", type: "text" }])
     }
   }
 
-  const canSubmit = code.trim() && studentName.trim() && input.trim() && status === "idle"
+  const canSubmit = !!code.trim() && !!studentName.trim() && (!!input.trim() || !!attachedImage) && status === "idle"
 
   return (
     <div className="flex h-screen bg-amber-50">
@@ -104,6 +157,9 @@ export default function StudentPage() {
         {status === "waiting" && (
           <div className="text-xs text-blue-600 animate-pulse">⏳ 선생님 확인 대기 중...</div>
         )}
+        <p className="text-[11px] text-gray-400 mt-auto leading-relaxed">
+          💡 📎 버튼으로 내가 그린 그림을 올려서 바꿔볼 수 있어요. 친구 사진 같은 건 올리지 마세요!
+        </p>
       </aside>
 
       {/* 메인 채팅 영역 */}
@@ -113,7 +169,8 @@ export default function StudentPage() {
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               {msg.type === "image" ? (
                 <div className="max-w-sm rounded-2xl overflow-hidden shadow-md border border-amber-100">
-                  <img src={msg.content} alt="생성된 그림" className="w-full" />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={msg.content} alt="그림" className="w-full" />
                 </div>
               ) : (
                 <div
@@ -136,29 +193,60 @@ export default function StudentPage() {
           {!code || !studentName ? (
             <p className="text-center text-sm text-gray-400 py-2">왼쪽에서 코드와 이름을 먼저 입력해 주세요.</p>
           ) : (
-            <div className="flex gap-2 items-end">
-              <textarea
-                className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-300"
-                rows={2}
-                placeholder="그리고 싶은 내용을 자세히 설명해보세요. 그림체, 분위기, 인물, 색감, 동작 등"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault()
-                    handleSubmit()
-                  }
-                }}
-                disabled={status !== "idle"}
-              />
-              <button
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-                className="bg-amber-400 hover:bg-amber-500 disabled:bg-gray-200 disabled:cursor-not-allowed text-white font-bold px-5 py-3 rounded-xl text-sm transition-colors"
-              >
-                전송
-              </button>
-            </div>
+            <>
+              {attachedImage && (
+                <div className="mb-2 flex items-center gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={attachedImage} alt="첨부한 그림" className="h-16 w-16 object-cover rounded-lg border border-amber-200" />
+                  <span className="text-xs text-gray-500">이 그림을 바꿀게요</span>
+                  <button
+                    onClick={() => setAttachedImage(null)}
+                    className="text-xs text-gray-400 hover:text-red-500"
+                  >
+                    ✕ 제거
+                  </button>
+                </div>
+              )}
+              <div className="flex gap-2 items-end">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => pickImage(e.target.files?.[0])}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={status !== "idle"}
+                  title="내 그림 올리기"
+                  className="shrink-0 border border-gray-200 hover:bg-amber-50 disabled:opacity-40 text-gray-500 rounded-xl px-3 py-3 text-lg transition-colors"
+                >
+                  📎
+                </button>
+                <textarea
+                  className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-300"
+                  rows={2}
+                  placeholder={attachedImage ? "올린 그림을 어떻게 바꿀지 설명해보세요." : "그리고 싶은 내용을 자세히 설명해보세요. 그림체, 분위기, 인물, 색감, 동작 등"}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSubmit()
+                    }
+                  }}
+                  disabled={status !== "idle"}
+                />
+                <button
+                  onClick={handleSubmit}
+                  disabled={!canSubmit}
+                  className="bg-amber-400 hover:bg-amber-500 disabled:bg-gray-200 disabled:cursor-not-allowed text-white font-bold px-5 py-3 rounded-xl text-sm transition-colors"
+                >
+                  전송
+                </button>
+              </div>
+            </>
           )}
         </div>
       </main>
