@@ -61,10 +61,10 @@ export default function StudentPage() {
         setStatus("idle")
         setPendingId(null)
       } else if (data.status === "rejected") {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "이 그림은 선생님이 통과시키지 않았어요. 설명을 바꿔서 다시 그려볼까요?", type: "text" },
-        ])
+        const msg = data.rejectMessage?.trim()
+          ? `🙅 선생님 메시지: ${data.rejectMessage.trim()}`
+          : "이 그림은 선생님이 통과시키지 않았어요. 설명을 바꿔서 다시 그려볼까요?"
+        setMessages((prev) => [...prev, { role: "assistant", content: msg, type: "text" }])
         setStatus("idle")
         setPendingId(null)
       }

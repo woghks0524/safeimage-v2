@@ -9,6 +9,8 @@ export default function TeacherPage() {
   const [code, setCode] = useState("")
   const [inputCode, setInputCode] = useState("")
   const [requests, setRequests] = useState<ImageRequest[]>([])
+  const [rejectingId, setRejectingId] = useState<string | null>(null)
+  const [rejectMessage, setRejectMessage] = useState("")
 
   useEffect(() => {
     if (!code) return
@@ -34,12 +36,19 @@ export default function TeacherPage() {
     })
   }
 
-  const handleReject = async (id: string) => {
+  const startReject = (id: string) => {
+    setRejectingId(id)
+    setRejectMessage("")
+  }
+
+  const submitReject = async (id: string) => {
     await fetch("/api/reject", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id, message: rejectMessage }),
     })
+    setRejectingId(null)
+    setRejectMessage("")
   }
 
   return (
@@ -102,20 +111,47 @@ export default function TeacherPage() {
                         <img src={req.originalImageUrl} alt="학생 원본" className="h-10 w-10 object-cover rounded border border-gray-200" />
                       </div>
                     )}
-                    <div className="flex gap-2 mt-auto pt-2">
-                      <button
-                        onClick={() => handleApprove(req.id)}
-                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold py-2 rounded-lg transition-colors"
-                      >
-                        ✅ 승인
-                      </button>
-                      <button
-                        onClick={() => handleReject(req.id)}
-                        className="flex-1 bg-rose-400 hover:bg-rose-500 text-white text-sm font-semibold py-2 rounded-lg transition-colors"
-                      >
-                        ❌ 거부
-                      </button>
-                    </div>
+                    {rejectingId === req.id ? (
+                      <div className="flex flex-col gap-2 mt-auto pt-2">
+                        <textarea
+                          autoFocus
+                          value={rejectMessage}
+                          onChange={(e) => setRejectMessage(e.target.value)}
+                          placeholder="학생에게 보낼 메시지 (예: 무서운 느낌은 빼고 다시 그려볼까요?)"
+                          rows={2}
+                          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-rose-200"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => submitReject(req.id)}
+                            className="flex-1 bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold py-2 rounded-lg transition-colors"
+                          >
+                            거부 보내기
+                          </button>
+                          <button
+                            onClick={() => { setRejectingId(null); setRejectMessage("") }}
+                            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-500 text-xs font-semibold py-2 rounded-lg transition-colors"
+                          >
+                            취소
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 mt-auto pt-2">
+                        <button
+                          onClick={() => handleApprove(req.id)}
+                          className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold py-2 rounded-lg transition-colors"
+                        >
+                          ✅ 승인
+                        </button>
+                        <button
+                          onClick={() => startReject(req.id)}
+                          className="flex-1 bg-rose-400 hover:bg-rose-500 text-white text-sm font-semibold py-2 rounded-lg transition-colors"
+                        >
+                          ❌ 거부
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

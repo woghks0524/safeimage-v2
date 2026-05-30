@@ -7,5 +7,6 @@ export interface ImageRequest {
   imageUrl: string
   originalImageUrl?: string
   status: "pending" | "approved" | "rejected"
+  rejectMessage?: string
   createdAt: number
 }
