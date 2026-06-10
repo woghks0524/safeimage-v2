@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { db } from "@/lib/firebase"
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore"
 import { ImageRequest } from "@/types"
@@ -59,6 +60,12 @@ export default function TeacherPage() {
           <p className="text-xs text-gray-400">학생이 요청한 그림을 확인하고 승인해 주세요</p>
         </div>
         <div className="flex gap-2 ml-auto items-center">
+          <Link
+            href="/teacher/challenge"
+            className="text-sm text-sky-600 hover:underline mr-2 whitespace-nowrap"
+          >
+            🎯 챌린지 만들기
+          </Link>
           <input
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
             placeholder="🔐 코드 입력 (예: 바나나)"

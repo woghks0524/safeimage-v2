@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from "react"
 import { db } from "@/lib/firebase"
-import { collection, query, where, onSnapshot } from "firebase/firestore"
-import { ImageRequest } from "@/types"
+import { collection, query, where, onSnapshot, doc } from "firebase/firestore"
+import { ImageRequest, Challenge, Participant } from "@/types"
 
 type Message = { role: "user" | "assistant"; content: string; type?: "text" | "image" }
 
@@ -42,12 +42,43 @@ export default function StudentPage() {
   const [promptHistory, setPromptHistory] = useState<string[]>([])
   const [status, setStatus] = useState<"idle" | "generating" | "waiting">("idle")
   const [pendingId, setPendingId] = useState<string | null>(null)
+  const [challenge, setChallenge] = useState<Challenge | null>(null)
+  const [participant, setParticipant] = useState<Participant | null>(null)
+  const [submitting, setSubmitting] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
+
+  // 코드가 챌린지면 목표 그림·시도 한도를 실시간 구독
+  useEffect(() => {
+    const c = code.trim()
+    if (!c) {
+      setChallenge(null)
+      return
+    }
+    const unsub = onSnapshot(doc(db, "challenges", c), (snap) => {
+      setChallenge(snap.exists() ? (snap.data() as Challenge) : null)
+    })
+    return () => unsub()
+  }, [code])
+
+  // 챌린지 참가자 문서(시도 횟수·잠금·제출 상태) 실시간 구독
+  useEffect(() => {
+    const c = code.trim()
+    const name = studentName.trim()
+    if (!challenge || !c || !name) {
+      setParticipant(null)
+      return
+    }
+    const unsub = onSnapshot(
+      doc(db, "challenges", c, "participants", name),
+      (snap) => setParticipant(snap.exists() ? (snap.data() as Participant) : null)
+    )
+    return () => unsub()
+  }, [challenge, code, studentName])
 
   useEffect(() => {
     if (!pendingId || status !== "waiting") return
@@ -128,7 +159,34 @@ export default function StudentPage() {
     }
   }
 
-  const canSubmit = !!code.trim() && !!studentName.trim() && (!!input.trim() || !!attachedImage) && status === "idle"
+  const locked = !!participant?.locked
+  const attemptsLeft = challenge ? Math.max(0, challenge.attemptLimit - (participant?.attemptsUsed ?? 0)) : null
+  const hasApproved = !!participant?.submittedRequestId
+
+  const handleFinalSubmit = async () => {
+    if (!challenge || locked || submitting || !hasApproved) return
+    setSubmitting(true)
+    try {
+      const res = await fetch("/api/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim(), studentName: studentName.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setMessages((prev) => [...prev, { role: "assistant", content: "🎉 그림을 제출했어요! 수고했어요.", type: "text" }])
+    } catch (e) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: e instanceof Error ? e.message : "제출에 실패했어요.", type: "text" },
+      ])
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const canSubmit =
+    !!code.trim() && !!studentName.trim() && (!!input.trim() || !!attachedImage) && status === "idle" && !locked
 
   return (
     <div className="flex h-screen bg-amber-50">
@@ -158,6 +216,30 @@ export default function StudentPage() {
             />
           </div>
         </div>
+        {challenge && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex flex-col gap-2">
+            <p className="text-sm font-bold text-amber-700">🎯 {challenge.title}</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={challenge.targetImageUrl} alt="목표 그림" className="w-full rounded-lg border border-amber-200" />
+            <p className="text-xs text-gray-500">이 그림처럼 그려보세요!</p>
+            {attemptsLeft !== null && (
+              <p className="text-xs font-semibold text-amber-700">
+                남은 시도: {attemptsLeft}회 {attemptsLeft === 0 && "(소진)"}
+              </p>
+            )}
+            {locked ? (
+              <p className="text-xs font-semibold text-emerald-600">✅ 제출 완료! 챌린지가 끝났어요.</p>
+            ) : (
+              <button
+                onClick={handleFinalSubmit}
+                disabled={!hasApproved || submitting}
+                className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-200 disabled:cursor-not-allowed text-white text-sm font-bold py-2 rounded-lg transition-colors"
+              >
+                {submitting ? "제출 중..." : hasApproved ? "이 그림 제출하기" : "승인된 그림이 없어요"}
+              </button>
+            )}
+          </div>
+        )}
         {status === "generating" && (
           <div className="text-xs text-amber-600 animate-pulse">🖌️ 그림 생성 중...</div>
         )}
@@ -199,6 +281,8 @@ export default function StudentPage() {
         <div className="p-4 bg-white border-t border-amber-100">
           {!code || !studentName ? (
             <p className="text-center text-sm text-gray-400 py-2">왼쪽에서 코드와 이름을 먼저 입력해 주세요.</p>
+          ) : locked ? (
+            <p className="text-center text-sm text-emerald-600 py-2">🎉 챌린지를 마쳤어요. 그림이 제출되었습니다!</p>
           ) : (
             <>
               {attachedImage && (
@@ -222,15 +306,17 @@ export default function StudentPage() {
                   className="hidden"
                   onChange={(e) => pickImage(e.target.files?.[0])}
                 />
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={status !== "idle"}
-                  title="내 그림 올리기"
-                  className="shrink-0 border border-gray-200 hover:bg-amber-50 disabled:opacity-40 text-gray-500 rounded-xl px-3 py-3 text-lg transition-colors"
-                >
-                  📎
-                </button>
+                {(!challenge || challenge.allowUpload) && (
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={status !== "idle"}
+                    title="내 그림 올리기"
+                    className="shrink-0 border border-gray-200 hover:bg-amber-50 disabled:opacity-40 text-gray-500 rounded-xl px-3 py-3 text-lg transition-colors"
+                  >
+                    📎
+                  </button>
+                )}
                 <textarea
                   className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-300"
                   rows={2}
