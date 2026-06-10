@@ -4,5 +4,11 @@ service cloud.firestore {
     match /requests/{docId} {
       allow read, write: if true;
     }
+    match /challenges/{code} {
+      allow read, write: if true;
+      match /participants/{studentName} {
+        allow read, write: if true;
+      }
+    }
   }
 }

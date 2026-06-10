@@ -42,6 +42,33 @@ export async function POST(req: NextRequest) {
 
   const fullContext = (promptHistory as string[]).map((p) => `- ${p}`).join("\n")
 
+  // ── 챌린지 모드면 잠금/시도한도/첨부허용 사전 체크 ──
+  let challenge: { allowUpload: boolean; attemptLimit: number } | null = null
+  try {
+    const chSnap = await adminDb.collection("challenges").doc(code).get()
+    if (chSnap.exists) {
+      const data = chSnap.data()!
+      challenge = { allowUpload: !!data.allowUpload, attemptLimit: Number(data.attemptLimit) }
+
+      const pSnap = await adminDb
+        .collection("challenges").doc(code)
+        .collection("participants").doc(studentName)
+        .get()
+      const p = pSnap.data() as { attemptsUsed?: number; locked?: boolean } | undefined
+      if (p?.locked) {
+        return NextResponse.json({ error: "이미 챌린지가 끝났어요." }, { status: 400 })
+      }
+      if ((p?.attemptsUsed ?? 0) >= challenge.attemptLimit) {
+        return NextResponse.json({ error: "시도 횟수를 모두 사용했어요." }, { status: 400 })
+      }
+      if (!challenge.allowUpload && imageBase64) {
+        return NextResponse.json({ error: "이 챌린지는 그림 첨부를 사용할 수 없어요." }, { status: 400 })
+      }
+    }
+  } catch (e) {
+    console.error("challenge precheck failed", e)
+  }
+
   try {
     let imagePrompt: string
     let resultBytes: Buffer
@@ -125,7 +152,7 @@ ${STYLE_AND_SAFETY}
 
     const imageUrl = await uploadToStorage(resultBytes)
 
-    const docRef = await adminDb.collection("requests").add({
+    const docData: Record<string, unknown> = {
       code,
       studentName,
       description,
@@ -134,7 +161,9 @@ ${STYLE_AND_SAFETY}
       originalImageUrl,
       status: "pending",
       createdAt: Date.now(),
-    })
+    }
+    if (challenge) docData.challengeCode = code
+    const docRef = await adminDb.collection("requests").add(docData)
 
     return NextResponse.json({ id: docRef.id, imageUrl })
   } catch (e: unknown) {
