@@ -25,6 +25,8 @@ export interface Participant {
   studentName: string           // 문서 ID = 학생 이름
   attemptsUsed: number          // 승인된 횟수만 누적
   submittedRequestId?: string   // 제출이 확정되면 마지막 승인본 id
+  submittedImageUrl?: string    // 마지막 승인본 이미지 (결과 화면용 비정규화)
+  submittedDescription?: string // 마지막 승인본 설명
   submittedAt?: number
   locked: boolean               // 제출 완료 또는 시도 소진 시 true
 }

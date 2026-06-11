@@ -66,6 +66,12 @@ export default function TeacherPage() {
           >
             🎯 챌린지 만들기
           </Link>
+          <Link
+            href="/teacher/results"
+            className="text-sm text-sky-600 hover:underline mr-2 whitespace-nowrap"
+          >
+            🖼️ 제출본
+          </Link>
           <input
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
             placeholder="🔐 코드 입력 (예: 바나나)"

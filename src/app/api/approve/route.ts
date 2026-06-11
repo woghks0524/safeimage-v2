@@ -27,7 +27,13 @@ export async function POST(req: NextRequest) {
         .collection("participants").doc(studentName)
 
       await participantRef.set(
-        { attemptsUsed: FieldValue.increment(1), submittedRequestId: id },
+        {
+          studentName,
+          attemptsUsed: FieldValue.increment(1),
+          submittedRequestId: id,
+          submittedImageUrl: data.imageUrl,
+          submittedDescription: data.description,
+        },
         { merge: true }
       )
 
