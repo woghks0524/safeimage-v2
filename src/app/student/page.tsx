@@ -45,6 +45,7 @@ export default function StudentPage() {
   const [challenge, setChallenge] = useState<Challenge | null>(null)
   const [participant, setParticipant] = useState<Participant | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [zoomed, setZoomed] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -190,8 +191,10 @@ export default function StudentPage() {
 
   return (
     <div className="flex h-screen bg-amber-50">
-      {/* 사이드바 */}
-      <aside className="w-64 bg-white border-r border-amber-200 p-6 flex flex-col gap-4 shrink-0">
+      {/* 사이드바 (챌린지면 목표 그림이 잘 보이도록 넓게) */}
+      <aside
+        className={`${challenge ? "w-96" : "w-64"} bg-white border-r border-amber-200 p-6 flex flex-col gap-4 shrink-0 overflow-y-auto transition-all`}
+      >
         <div>
           <h1 className="text-xl font-bold text-amber-700 mb-1">🎨 AI 그림 그리기</h1>
           <p className="text-xs text-gray-400">선생님이 확인 후 그림을 보여드려요</p>
@@ -219,8 +222,22 @@ export default function StudentPage() {
         {challenge && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex flex-col gap-2">
             <p className="text-sm font-bold text-amber-700">🎯 {challenge.title}</p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={challenge.targetImageUrl} alt="목표 그림" className="w-full rounded-lg border border-amber-200" />
+            <button
+              type="button"
+              onClick={() => setZoomed(true)}
+              title="클릭하면 크게 볼 수 있어요"
+              className="group relative block w-full"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={challenge.targetImageUrl}
+                alt="목표 그림"
+                className="w-full rounded-lg border border-amber-200 group-hover:brightness-95 transition"
+              />
+              <span className="absolute bottom-1.5 right-1.5 bg-black/55 text-white text-[11px] font-medium px-2 py-0.5 rounded-full">
+                🔍 크게 보기
+              </span>
+            </button>
             <p className="text-xs text-gray-500">이 그림처럼 그려보세요!</p>
             {attemptsLeft !== null && (
               <p className="text-xs font-semibold text-amber-700">
@@ -343,6 +360,28 @@ export default function StudentPage() {
           )}
         </div>
       </main>
+
+      {/* 목표 그림 크게 보기 */}
+      {zoomed && challenge && (
+        <div
+          onClick={() => setZoomed(false)}
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6 cursor-zoom-out"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={challenge.targetImageUrl}
+            alt="목표 그림"
+            className="max-w-full max-h-full rounded-lg shadow-2xl"
+          />
+          <button
+            onClick={() => setZoomed(false)}
+            className="absolute top-4 right-5 text-white/90 hover:text-white text-3xl leading-none"
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   )
 }
