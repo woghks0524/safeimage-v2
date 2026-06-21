@@ -5,22 +5,24 @@ import { v4 as uuidv4 } from "uuid"
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-const STYLE_AND_SAFETY = `
-[스타일 조건]
-- 어린이 그림책 또는 2D 애니메이션 스타일
-- flat 2D style, minimal shading, no lighting effects 반드시 포함
-- 하이퍼리얼리즘, photorealism, 3D rendering 금지
-- 부드럽고 명확한 라인, 따뜻한 파스텔 색감, 단순한 구성
-
-[안전 조건 - 아래 요소가 포함된 경우 해당 요소를 제거하거나 안전한 방향으로 대체해]
+// 안전 규칙: 항상 적용되는 부분 (교사가 못 끔)
+const SAFETY_RULES = `
+[안전 규칙 - 아래 요소가 포함된 경우 해당 요소를 제거하거나 안전한 방향으로 대체해]
 - 폭력, 무기, 피, 상해 표현
 - 선정적이거나 성적인 요소
-- 공포, 혐오, 혐오스러운 생물
+- 공포, 혐오스러운 생물
 - 특정 인물(실존 인물, 유명인) 묘사
 - 종교·정치적으로 민감한 내용
+`
 
-결과는 영어로, 반드시 아래처럼 시작해줘:
-"A flat 2D illustration of..."
+// 스타일 안내: 화풍을 강제하지 않고 학생의 상상/요청을 따른다 (추후 교사 커스텀이 얹힐 자리)
+const STYLE_GUIDE = `
+[스타일 안내]
+- 학생이 상상한 내용을 자유로운 스타일로 표현해줘. 특정 화풍을 강제하지 마.
+- 학생이 스타일을 직접 요청하면(예: 사실적, 3D, 만화, 픽셀아트, 수채화, 애니메이션) 그대로 따라줘.
+- 어린이가 보기에 즐겁고 창의적인 결과를 지향해.
+
+결과는 영어 프롬프트로 만들어줘.
 `
 
 async function uploadToStorage(bytes: Buffer): Promise<string> {
@@ -89,7 +91,8 @@ gpt-image-1 image edit 모델용 영어 지시문 한 문단을 만들어줘.
 
 학생의 요청 (누적 흐름):
 ${fullContext}
-${STYLE_AND_SAFETY}
+${SAFETY_RULES}
+${STYLE_GUIDE}
 `
       const visionRes = await client.chat.completions.create({
         model: "gpt-4o",
@@ -127,7 +130,8 @@ ${STYLE_AND_SAFETY}
 
 학생의 설명 (누적 흐름):
 ${fullContext}
-${STYLE_AND_SAFETY}
+${SAFETY_RULES}
+${STYLE_GUIDE}
 `
       const gptResponse = await client.chat.completions.create({
         model: "gpt-4o",
