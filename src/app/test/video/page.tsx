@@ -12,7 +12,19 @@ type Status = "idle" | "starting" | "polling" | "done" | "error"
 
 const MODELS = ["sora-2", "sora-2-pro"] as const
 const SECONDS = ["4", "8", "12"] as const
-const SIZES = ["720x1280", "1280x720", "1024x1792", "1792x1024"] as const
+
+type Orientation = "portrait" | "landscape"
+// 화면 방향별 해상도 (세로형 / 가로형)
+const SIZE_OPTIONS: Record<Orientation, { value: string; label: string }[]> = {
+  portrait: [
+    { value: "720x1280", label: "720 × 1280 (기본)" },
+    { value: "1024x1792", label: "1024 × 1792 (고화질)" },
+  ],
+  landscape: [
+    { value: "1280x720", label: "1280 × 720 (기본)" },
+    { value: "1792x1024", label: "1792 × 1024 (고화질)" },
+  ],
+}
 
 // 업로드 이미지를 선택한 영상 해상도에 정확히 맞춰 cover-crop (Sora 참조 이미지 = 출력 크기 일치 요건)
 async function fileToSizedPng(file: File, size: string): Promise<string> {
@@ -44,6 +56,7 @@ export default function VideoTestPage() {
   const [prompt, setPrompt] = useState("")
   const [model, setModel] = useState<string>("sora-2")
   const [seconds, setSeconds] = useState<string>("4")
+  const [orientation, setOrientation] = useState<Orientation>("portrait")
   const [size, setSize] = useState<string>("720x1280")
   const [image, setImage] = useState<string | null>(null) // data URL (선택 해상도에 맞춰짐)
 
@@ -61,6 +74,13 @@ export default function VideoTestPage() {
   async function onPickImage(file: File) {
     const sized = await fileToSizedPng(file, size)
     setImage(sized)
+  }
+
+  // 화면 방향을 바꾸면 해당 방향의 기본 해상도로 맞추고, 올린 이미지는 다시 고르게 한다
+  function changeOrientation(o: Orientation) {
+    setOrientation(o)
+    setSize(SIZE_OPTIONS[o][0].value)
+    setImage(null)
   }
 
   function reset() {
@@ -175,6 +195,28 @@ export default function VideoTestPage() {
         className="mt-4 w-full rounded-lg border border-gray-300 p-3 text-sm"
       />
 
+      {/* 화면 방향 (가로형 / 세로형) */}
+      <div className="mt-4">
+        <span className="text-sm text-gray-500">화면 방향</span>
+        <div className="mt-1 flex gap-2">
+          {([
+            { o: "portrait" as Orientation, label: "📱 세로형" },
+            { o: "landscape" as Orientation, label: "🖥️ 가로형" },
+          ]).map(({ o, label }) => (
+            <button
+              key={o}
+              onClick={() => changeOrientation(o)}
+              disabled={busy}
+              className={`flex-1 rounded-lg border py-2 text-sm font-medium ${
+                orientation === o ? "border-black bg-black text-white" : "border-gray-300 text-gray-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* 옵션 */}
       <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
         <label className="flex flex-col gap-1">
@@ -192,7 +234,7 @@ export default function VideoTestPage() {
         <label className="flex flex-col gap-1">
           <span className="text-gray-500">해상도</span>
           <select value={size} onChange={(e) => setSize(e.target.value)} disabled={busy} className="rounded border p-2">
-            {SIZES.map((s) => <option key={s}>{s}</option>)}
+            {SIZE_OPTIONS[orientation].map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </label>
       </div>
