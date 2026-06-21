@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { db } from "@/lib/firebase"
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore"
@@ -12,6 +12,22 @@ export default function TeacherPage() {
   const [requests, setRequests] = useState<ImageRequest[]>([])
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [rejectMessage, setRejectMessage] = useState("")
+  const [autoApprove, setAutoApprove] = useState(false)
+  const autoApprovedRef = useRef<Set<string>>(new Set()) // 자동 승인 중복 호출 방지
+
+  // 자동 승인이 켜져 있으면 들어오는 미승인 요청을 즉시 승인한다
+  useEffect(() => {
+    if (!autoApprove) return
+    requests.forEach((req) => {
+      if (autoApprovedRef.current.has(req.id)) return
+      autoApprovedRef.current.add(req.id)
+      fetch("/api/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: req.id }),
+      }).catch(() => autoApprovedRef.current.delete(req.id))
+    })
+  }, [autoApprove, requests])
 
   useEffect(() => {
     if (!code) return
@@ -60,6 +76,26 @@ export default function TeacherPage() {
           <p className="text-xs text-gray-400">학생이 요청한 그림을 확인하고 승인해 주세요</p>
         </div>
         <div className="flex gap-2 ml-auto items-center">
+          <label className="flex items-center gap-2 text-sm mr-2 cursor-pointer select-none whitespace-nowrap">
+            <span className={autoApprove ? "text-emerald-600 font-semibold" : "text-gray-500"}>
+              ⚡ 자동 승인
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoApprove}
+              onClick={() => setAutoApprove((v) => !v)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                autoApprove ? "bg-emerald-500" : "bg-gray-300"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  autoApprove ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </label>
           <Link
             href="/teacher/challenge"
             className="text-sm text-sky-600 hover:underline mr-2 whitespace-nowrap"
@@ -89,6 +125,11 @@ export default function TeacherPage() {
       </header>
 
       <main className="p-8">
+        {autoApprove && (
+          <div className="mb-4 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2 text-sm text-emerald-700">
+            ⚡ 자동 승인이 켜져 있어요. 들어오는 그림이 검토 없이 바로 승인됩니다.
+          </div>
+        )}
         {!code ? (
           <div className="flex flex-col items-center justify-center h-64 text-gray-400">
             <p className="text-lg">위에서 코드를 입력하면 미승인 그림 목록이 나타납니다.</p>
