@@ -6,10 +6,13 @@ export interface ImageRequest {
   imagePrompt: string
   imageUrl: string
   originalImageUrl?: string
-  status: "pending" | "approved" | "rejected"
+  status: "pending" | "approved" | "rejected" | "generating"
   rejectMessage?: string
   challengeCode?: string
   createdAt: number
+  // 영상 요청일 때
+  mediaType?: "image" | "video"
+  videoUrl?: string
 }
 
 export interface Challenge {

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import Link from "next/link"
 import { db } from "@/lib/firebase"
 import { collection, query, where, onSnapshot, doc } from "firebase/firestore"
 import { ImageRequest, Challenge, Participant } from "@/types"
@@ -198,6 +199,9 @@ export default function StudentPage() {
         <div>
           <h1 className="text-xl font-bold text-amber-700 mb-1">🎨 AI 그림 그리기</h1>
           <p className="text-xs text-gray-400">선생님이 확인 후 그림을 보여드려요</p>
+          <Link href="/student/video" className="mt-1 inline-block text-xs text-indigo-600 hover:underline">
+            🎬 영상 만들기로 가기
+          </Link>
         </div>
         <div className="flex flex-col gap-3">
           <div>

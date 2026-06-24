@@ -147,12 +147,23 @@ export default function TeacherPage() {
               {requests.map((req) => (
                 <div key={req.id} className="bg-white rounded-2xl border border-sky-100 shadow-sm overflow-hidden flex flex-col">
                   <div className="relative">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={req.imageUrl} alt="생성된 그림" className="w-full aspect-square object-cover" />
-                    {req.originalImageUrl && (
-                      <span className="absolute top-2 left-2 bg-amber-500/90 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full">
-                        🖼️ 업로드 변형
-                      </span>
+                    {req.mediaType === "video" ? (
+                      <>
+                        <video src={req.videoUrl} controls className="w-full aspect-square object-cover bg-black" />
+                        <span className="absolute top-2 left-2 bg-indigo-600/90 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full">
+                          🎬 영상
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={req.imageUrl} alt="생성된 그림" className="w-full aspect-square object-cover" />
+                        {req.originalImageUrl && (
+                          <span className="absolute top-2 left-2 bg-amber-500/90 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full">
+                            🖼️ 업로드 변형
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                   <div className="p-4 flex flex-col gap-2 flex-1">
