@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { startVideo, getVideo, storeVideo } from "@/lib/video"
+import { startVideo, getVideo, storeVideo, refineVideoPrompt } from "@/lib/video"
 import type { VideoModel, VideoSeconds, VideoSize } from "@/lib/video"
 import { adminDb } from "@/lib/firebase-admin"
 
@@ -20,23 +20,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "프롬프트가 필요합니다." }, { status: 400 })
     }
 
+    const imageBytes = imageBase64 ? Buffer.from(imageBase64 as string, "base64") : undefined
+    const imageMime = imageMimeType as string | undefined
+
+    // 본 서비스 흐름(code+studentName)이면 학생 입력을 GPT-4o로 안전한 영어 프롬프트로 정제한다.
+    // 테스트 페이지(코드 없음)는 입력을 그대로 Sora 에 보낸다.
+    const isStudentFlow = !!(code && studentName)
+    const finalPrompt = isStudentFlow
+      ? await refineVideoPrompt({ prompt, imageBytes, imageMime })
+      : prompt
+
     const video = await startVideo({
-      prompt,
+      prompt: finalPrompt,
       model: model as VideoModel | undefined,
       seconds: seconds as VideoSeconds | undefined,
       size: size as VideoSize | undefined,
-      imageBytes: imageBase64 ? Buffer.from(imageBase64 as string, "base64") : undefined,
-      imageMime: imageMimeType as string | undefined,
+      imageBytes,
+      imageMime,
     })
 
     // 본 서비스 흐름: 승인 대기에 올릴 요청 문서를 미리 만든다 (완료 전이라 status:"generating")
     let requestId: string | undefined
-    if (code && studentName) {
+    if (isStudentFlow) {
       const docRef = await adminDb.collection("requests").add({
         code,
         studentName,
         description: description || prompt,
-        imagePrompt: prompt,
+        imagePrompt: finalPrompt,
         imageUrl: "",
         videoUrl: "",
         mediaType: "video",

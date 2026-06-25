@@ -28,6 +28,74 @@ export interface StartVideoInput {
   imageMime?: string
 }
 
+// 영상 프롬프트 공통 안전·연출 규칙 (이미지의 STYLE_AND_SAFETY 와 같은 역할)
+const VIDEO_SAFETY_AND_STYLE = `
+[안전 규칙 - 아래 요소가 포함된 경우 제거하거나 안전한 방향으로 대체해]
+- 폭력, 무기, 피, 상해 표현
+- 선정적이거나 성적인 요소
+- 공포, 혐오스러운 생물
+- 특정 인물(실존 인물, 유명인) 묘사
+- 종교·정치적으로 민감한 내용
+
+[스타일/연출 안내]
+- 초등학생이 보기에 밝고 친근하며 즐거운 분위기로.
+- 학생이 특정 스타일을 요청하면 그대로 따르고, 없으면 자유롭게 표현해.
+- 영상이므로 움직임과 동작을 구체적으로 묘사해줘.
+
+결과는 Sora 영상 모델용 영어 프롬프트 한 문단으로만 답해줘.
+`
+
+/**
+ * 초등학생 입력을 Sora 용 안전한 영어 프롬프트로 정제한다 (이미지의 GPT-4o 단계와 동일).
+ * 그림이 있으면 GPT-4o 비전이 그림을 직접 보고 "움직이는 영상" 지시문을 만든다.
+ */
+export async function refineVideoPrompt(input: {
+  prompt: string
+  imageBytes?: Buffer
+  imageMime?: string
+}): Promise<string> {
+  const { prompt, imageBytes, imageMime } = input
+
+  if (imageBytes) {
+    const mime = imageMime || "image/png"
+    const b64 = imageBytes.toString("base64")
+    const res = await client.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: "너는 초등학교 교육용 영상 프롬프트 전문가야." },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `아래는 학생이 올린 그림이야. 이 그림이 자연스럽게 움직이는 짧은 영상을 만들기 위한 프롬프트를 만들어줘. 원본의 핵심 형태와 구성은 유지하되, 학생의 요청을 반영해.
+학생 요청: ${prompt}
+${VIDEO_SAFETY_AND_STYLE}`,
+            },
+            { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } },
+          ],
+        },
+      ],
+    })
+    return res.choices[0].message.content!.trim()
+  }
+
+  const res = await client.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: "너는 초등학교 교육용 영상 프롬프트 전문가야." },
+      {
+        role: "user",
+        content: `초등학생(7~13세)이 입력한 설명을 Sora 영상 모델용 영어 프롬프트로 바꿔줘.
+이 영상은 선생님이 검토 후 학생에게 공개되는 교육용 콘텐츠야.
+학생 설명: ${prompt}
+${VIDEO_SAFETY_AND_STYLE}`,
+      },
+    ],
+  })
+  return res.choices[0].message.content!.trim()
+}
+
 /** 영상 생성 잡을 시작한다. 반환된 id 로 이후 상태를 폴링한다. */
 export async function startVideo(input: StartVideoInput) {
   const { prompt, model = "sora-2", seconds = "4", size = "720x1280", imageBytes, imageMime } = input
