@@ -9,7 +9,11 @@ import { ImageRequest, Challenge, Participant } from "@/types"
 type Message = { role: "user" | "assistant"; content: string; type?: "text" | "image" }
 
 // 업로드 이미지를 최대 1024px PNG 데이터 URL로 축소 (전송량·생성 크기 정렬)
-async function fileToDownscaledPng(file: File, max = 1024): Promise<string> {
+// 축소 후의 가로·세로도 함께 반환해 서버가 생성 비율을 맞출 수 있게 한다.
+async function fileToDownscaledPng(
+  file: File,
+  max = 1024
+): Promise<{ dataUrl: string; width: number; height: number }> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as string)
@@ -29,7 +33,7 @@ async function fileToDownscaledPng(file: File, max = 1024): Promise<string> {
   canvas.width = w
   canvas.height = h
   canvas.getContext("2d")!.drawImage(img, 0, 0, w, h)
-  return canvas.toDataURL("image/png")
+  return { dataUrl: canvas.toDataURL("image/png"), width: w, height: h }
 }
 
 export default function StudentPage() {
@@ -40,6 +44,7 @@ export default function StudentPage() {
   ])
   const [input, setInput] = useState("")
   const [attachedImage, setAttachedImage] = useState<string | null>(null) // data URL
+  const [attachedDims, setAttachedDims] = useState<{ w: number; h: number } | null>(null)
   const [promptHistory, setPromptHistory] = useState<string[]>([])
   const [status, setStatus] = useState<"idle" | "generating" | "waiting">("idle")
   const [pendingId, setPendingId] = useState<string | null>(null)
@@ -108,7 +113,9 @@ export default function StudentPage() {
   const pickImage = async (file: File | null | undefined) => {
     if (!file) return
     try {
-      setAttachedImage(await fileToDownscaledPng(file))
+      const { dataUrl, width, height } = await fileToDownscaledPng(file)
+      setAttachedImage(dataUrl)
+      setAttachedDims({ w: width, h: height })
     } catch {
       /* 이미지 읽기 실패는 무시 */
     }
@@ -120,9 +127,11 @@ export default function StudentPage() {
     const hasImage = !!attachedImage
     const desc = input.trim() || (hasImage ? "이 그림을 어린이용 부드러운 그림책 스타일로 바꿔줘." : "")
     const imageDataUrl = attachedImage
+    const imageDims = attachedDims
 
     setInput("")
     setAttachedImage(null)
+    setAttachedDims(null)
     if (imageDataUrl) {
       setMessages((prev) => [...prev, { role: "user", content: imageDataUrl, type: "image" }])
     }
@@ -142,6 +151,10 @@ export default function StudentPage() {
       if (imageDataUrl) {
         body.imageBase64 = imageDataUrl.split(",")[1]
         body.imageMimeType = "image/png"
+        if (imageDims) {
+          body.imageWidth = imageDims.w
+          body.imageHeight = imageDims.h
+        }
       }
 
       const res = await fetch("/api/generate", {
@@ -312,7 +325,7 @@ export default function StudentPage() {
                   <img src={attachedImage} alt="첨부한 그림" className="h-16 w-16 object-cover rounded-lg border border-amber-200" />
                   <span className="text-xs text-gray-500">이 그림을 바꿀게요</span>
                   <button
-                    onClick={() => setAttachedImage(null)}
+                    onClick={() => { setAttachedImage(null); setAttachedDims(null) }}
                     className="text-xs text-gray-400 hover:text-red-500"
                   >
                     ✕ 제거

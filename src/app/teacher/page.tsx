@@ -13,6 +13,7 @@ export default function TeacherPage() {
   const [rejectingId, setRejectingId] = useState<string | null>(null)
   const [rejectMessage, setRejectMessage] = useState("")
   const [autoApprove, setAutoApprove] = useState(false)
+  const [detail, setDetail] = useState<ImageRequest | null>(null) // 원본 비율 상세보기
   const autoApprovedRef = useRef<Set<string>>(new Set()) // 자동 승인 중복 호출 방지
 
   // 자동 승인이 켜져 있으면 들어오는 미승인 요청을 즉시 승인한다
@@ -165,6 +166,14 @@ export default function TeacherPage() {
                         )}
                       </>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => setDetail(req)}
+                      title="원래 비율로 크게 보기"
+                      className="absolute bottom-2 right-2 bg-black/55 hover:bg-black/75 text-white text-[11px] font-medium px-2 py-0.5 rounded-full transition-colors"
+                    >
+                      🔍 크게 보기
+                    </button>
                   </div>
                   <div className="p-4 flex flex-col gap-2 flex-1">
                     <p className="font-semibold text-gray-700 text-sm">🙋 {req.studentName}</p>
@@ -224,6 +233,45 @@ export default function TeacherPage() {
           </>
         )}
       </main>
+
+      {/* 원본 비율 상세보기 */}
+      {detail && (
+        <div
+          onClick={() => setDetail(null)}
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6 cursor-zoom-out"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-[90vw] max-h-[90vh] flex flex-col items-center gap-3 cursor-default"
+          >
+            {detail.mediaType === "video" ? (
+              <video
+                src={detail.videoUrl}
+                controls
+                autoPlay
+                className="max-w-full max-h-[80vh] rounded-lg shadow-2xl bg-black"
+              />
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={detail.imageUrl}
+                alt="생성된 그림 (원본 비율)"
+                className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+              />
+            )}
+            <p className="text-white/90 text-sm">
+              🙋 {detail.studentName} — {detail.description}
+            </p>
+          </div>
+          <button
+            onClick={() => setDetail(null)}
+            className="absolute top-4 right-5 text-white/90 hover:text-white text-3xl leading-none"
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   )
 }

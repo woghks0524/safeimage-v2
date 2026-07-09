@@ -3,7 +3,40 @@ import OpenAI, { toFile } from "openai"
 import { adminDb, adminStorage } from "@/lib/firebase-admin"
 import { v4 as uuidv4 } from "uuid"
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+// 여러 OpenAI 키를 콤마로 받아 풀로 사용. 요청마다 랜덤 시작점에서 순환하며,
+// 429(rate limit)나 5xx가 나면 다음 키로 자동 재시도해 순간 부하를 분산한다.
+// (효과는 키가 '서로 다른 계정'일 때만 큼 — 같은 계정 키는 한도를 공유함)
+const OPENAI_KEYS = (process.env.OPENAI_API_KEYS ?? process.env.OPENAI_API_KEY ?? "")
+  .split(",")
+  .map((k) => k.trim())
+  .filter(Boolean)
+
+function clientFor(key: string): OpenAI {
+  return new OpenAI({ apiKey: key })
+}
+
+async function withKeyFailover<T>(fn: (client: OpenAI) => Promise<T>): Promise<T> {
+  if (OPENAI_KEYS.length === 0) {
+    throw new Error("OPENAI_API_KEYS(또는 OPENAI_API_KEY)가 설정되지 않았습니다.")
+  }
+  const start = Math.floor(Math.random() * OPENAI_KEYS.length)
+  let lastErr: unknown
+  for (let i = 0; i < OPENAI_KEYS.length; i++) {
+    const key = OPENAI_KEYS[(start + i) % OPENAI_KEYS.length]
+    try {
+      return await fn(clientFor(key))
+    } catch (e) {
+      const status = (e as { status?: number })?.status
+      // rate limit / 서버 오류만 다음 키로 재시도. 그 외(400 등)는 즉시 실패.
+      if (status === 429 || (typeof status === "number" && status >= 500)) {
+        lastErr = e
+        continue
+      }
+      throw e
+    }
+  }
+  throw lastErr
+}
 
 // 안전 규칙: 항상 적용되는 부분 (교사가 못 끔)
 const SAFETY_RULES = `
@@ -25,6 +58,16 @@ const STYLE_GUIDE = `
 결과는 영어 프롬프트로 만들어줘.
 `
 
+// gpt-image-1은 1024x1024 / 1536x1024(가로) / 1024x1536(세로) 세 가지만 지원.
+// 업로드한 그림의 가로세로 비율을 보고 가장 가까운 크기를 고른다.
+function pickSize(w?: number, h?: number): "1024x1024" | "1536x1024" | "1024x1536" {
+  if (!w || !h) return "1024x1024"
+  const r = w / h
+  if (r >= 1.2) return "1536x1024" // 가로형
+  if (r <= 0.83) return "1024x1536" // 세로형
+  return "1024x1024" // 정사각형에 가까움
+}
+
 async function uploadToStorage(bytes: Buffer): Promise<string> {
   const filename = `images/${uuidv4()}.png`
   const bucket = adminStorage.bucket()
@@ -35,8 +78,16 @@ async function uploadToStorage(bytes: Buffer): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  const { code, studentName, description, promptHistory, imageBase64, imageMimeType } =
-    await req.json()
+  const {
+    code,
+    studentName,
+    description,
+    promptHistory,
+    imageBase64,
+    imageMimeType,
+    imageWidth,
+    imageHeight,
+  } = await req.json()
 
   if (!code || !studentName || !description) {
     return NextResponse.json({ error: "필수 항목이 누락되었습니다." }, { status: 400 })
@@ -94,29 +145,33 @@ ${fullContext}
 ${SAFETY_RULES}
 ${STYLE_GUIDE}
 `
-      const visionRes = await client.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: "너는 초등학교 교육용 이미지 편집 프롬프트 전문가야." },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: visionPrompt },
-              { type: "image_url", image_url: { url: `data:${mime};base64,${imageBase64}` } },
-            ],
-          },
-        ],
-      })
+      const visionRes = await withKeyFailover((c) =>
+        c.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: "너는 초등학교 교육용 이미지 편집 프롬프트 전문가야." },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: visionPrompt },
+                { type: "image_url", image_url: { url: `data:${mime};base64,${imageBase64}` } },
+              ],
+            },
+          ],
+        })
+      )
       imagePrompt = visionRes.choices[0].message.content!.trim()
 
       // ② gpt-image-1 edit 로 원본을 변형
       const inputFile = await toFile(originalBytes, "input.png", { type: "image/png" })
-      const editRes = await client.images.edit({
-        model: "gpt-image-1",
-        image: inputFile,
-        prompt: imagePrompt,
-        size: "1024x1024",
-      })
+      const editRes = await withKeyFailover((c) =>
+        c.images.edit({
+          model: "gpt-image-1",
+          image: inputFile,
+          prompt: imagePrompt,
+          size: pickSize(Number(imageWidth), Number(imageHeight)),
+        })
+      )
       resultBytes = Buffer.from((editRes.data![0] as { b64_json: string }).b64_json, "base64")
 
       // 원본도 보관 (선생님 재생성 시 다시 변형할 수 있도록)
@@ -133,21 +188,25 @@ ${fullContext}
 ${SAFETY_RULES}
 ${STYLE_GUIDE}
 `
-      const gptResponse = await client.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: "너는 이미지 생성 전문 프롬프트 엔지니어야." },
-          { role: "user", content: gptPrompt },
-        ],
-      })
+      const gptResponse = await withKeyFailover((c) =>
+        c.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: "너는 이미지 생성 전문 프롬프트 엔지니어야." },
+            { role: "user", content: gptPrompt },
+          ],
+        })
+      )
       imagePrompt = gptResponse.choices[0].message.content!.trim()
 
-      const imageResponse = await client.images.generate({
-        model: "gpt-image-1",
-        prompt: imagePrompt,
-        size: "1024x1024",
-        n: 1,
-      })
+      const imageResponse = await withKeyFailover((c) =>
+        c.images.generate({
+          model: "gpt-image-1",
+          prompt: imagePrompt,
+          size: "1024x1024",
+          n: 1,
+        })
+      )
       resultBytes = Buffer.from(
         (imageResponse.data![0] as { b64_json: string }).b64_json,
         "base64"
