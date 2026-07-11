@@ -95,7 +95,11 @@ export default function StudentPage() {
       if (snap.empty) return
       const data = snap.docs[0].data() as ImageRequest
       if (data.status === "approved") {
-        setMessages((prev) => [...prev, { role: "assistant", content: data.imageUrl, type: "image" }])
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "🎉 완성됐어요! 멋지죠? 아래 그림을 저장할 수 있어요.", type: "text" },
+          { role: "assistant", content: data.imageUrl, type: "image" },
+        ])
         setStatus("idle")
         setPendingId(null)
       } else if (data.status === "rejected") {
@@ -109,6 +113,21 @@ export default function StudentPage() {
     })
     return () => unsub()
   }, [pendingId, status])
+
+  // 완성작 저장 (교차 출처 URL은 blob으로 받아 다운로드, 실패 시 새 탭)
+  const downloadImage = async (url: string) => {
+    try {
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const a = document.createElement("a")
+      a.href = URL.createObjectURL(blob)
+      a.download = "내그림.png"
+      a.click()
+      URL.revokeObjectURL(a.href)
+    } catch {
+      window.open(url, "_blank")
+    }
+  }
 
   const pickImage = async (file: File | null | undefined) => {
     if (!file) return
@@ -291,9 +310,19 @@ export default function StudentPage() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               {msg.type === "image" ? (
-                <div className="max-w-sm rounded-2xl overflow-hidden shadow-md border border-amber-100">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={msg.content} alt="그림" className="w-full" />
+                <div className="max-w-sm flex flex-col gap-2">
+                  <div className="rounded-2xl overflow-hidden shadow-md border border-amber-100">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={msg.content} alt="그림" className="w-full" />
+                  </div>
+                  {msg.role === "assistant" && (
+                    <button
+                      onClick={() => downloadImage(msg.content)}
+                      className="self-start bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      💾 저장하기
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div
@@ -308,6 +337,14 @@ export default function StudentPage() {
               )}
             </div>
           ))}
+          {status === "generating" && (
+            <div className="flex justify-start">
+              <div className="max-w-xs lg:max-w-md px-4 py-3 rounded-2xl rounded-bl-sm text-sm leading-relaxed bg-white text-gray-700 border border-amber-100 shadow-sm">
+                <span className="animate-pulse">🎨 열심히 그리는 중이야! 조금만 기다려줘~</span>
+                <span className="block text-[11px] text-gray-400 mt-1">보통 20~30초쯤 걸려요 ⏳</span>
+              </div>
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
 
@@ -346,15 +383,15 @@ export default function StudentPage() {
                     onClick={() => fileRef.current?.click()}
                     disabled={status !== "idle"}
                     title="내 그림 올리기"
-                    className="shrink-0 border border-gray-200 hover:bg-amber-50 disabled:opacity-40 text-gray-500 rounded-xl px-3 py-3 text-lg transition-colors"
+                    className="shrink-0 flex items-center gap-1 border border-gray-200 hover:bg-amber-50 disabled:opacity-40 text-gray-500 rounded-xl px-3 py-3 text-sm transition-colors"
                   >
-                    📎
+                    📎 <span className="hidden sm:inline">내 그림</span>
                   </button>
                 )}
                 <textarea
                   className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-300"
                   rows={2}
-                  placeholder={attachedImage ? "올린 그림을 어떻게 바꿀지 설명해보세요." : "그리고 싶은 내용을 자세히 설명해보세요. 그림체, 분위기, 인물, 색감, 동작 등"}
+                  placeholder={attachedImage ? "올린 그림을 어떻게 바꿀지 말해줘. (예: 배경을 우주로 바꿔줘)" : "그리고 싶은 걸 말해줘! (예: 무지개 위에 앉은 노란 고양이 🐱🌈)"}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
